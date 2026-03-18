@@ -342,6 +342,22 @@
     }
     .btn-secondary:hover { border-color: var(--muted); color: var(--text); }
 
+    /* Payment method pills */
+    .method-pill {
+      padding: 8px 16px; border-radius: 50px;
+      border: 1px solid var(--card-border);
+      background: var(--bg2); color: var(--muted);
+      font-family: 'Rajdhani', sans-serif; font-size: 0.85rem;
+      font-weight: 600; cursor: pointer;
+      transition: all 0.2s; letter-spacing: 0.04em;
+    }
+    .method-pill:hover { border-color: var(--green); color: var(--text); }
+    .method-pill.active {
+      border-color: var(--green);
+      background: rgba(48,232,155,0.1);
+      color: var(--green);
+    }
+
     /* ── Keyframes ── */
     @keyframes fadeDown {
       from { opacity: 0; transform: translateY(-24px); }
@@ -447,14 +463,65 @@
 
   <!-- Withdraw Modal -->
   <div class="modal-overlay" id="withdrawModal">
-    <div class="modal">
+    <div class="modal" style="max-width:480px;">
       <h2 style="color:var(--green)">💸 Withdraw Coins</h2>
-      <p>Enter the amount to withdraw and your payment details. Minimum: <strong style="color:var(--gold)">500 Coins</strong>.</p>
-      <input type="number" placeholder="Amount in Coins" id="withdrawAmount" min="500"/>
-      <input type="text" placeholder="UPI ID / PayPal / Wallet Address" id="withdrawAddr"/>
-      <div class="modal-actions">
+      <p style="margin-bottom:18px;">Choose your payment method and enter details. Minimum: <strong style="color:var(--gold)">500 Coins</strong>.</p>
+
+      <!-- Amount -->
+      <input type="number" placeholder="Amount in Coins (min 500)" id="withdrawAmount" min="500" style="margin-bottom:14px;"/>
+
+      <!-- Payment method pills -->
+      <div style="font-size:0.72rem;color:var(--muted);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:10px;">Select Payment Method</div>
+      <div id="methodPills" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+        <button class="method-pill active" onclick="selectMethod('paytm',this)">📱 Paytm</button>
+        <button class="method-pill" onclick="selectMethod('gpay',this)">🟢 Google Pay</button>
+        <button class="method-pill" onclick="selectMethod('paypal',this)">🅿️ PayPal</button>
+        <button class="method-pill" onclick="selectMethod('upi',this)">🏦 UPI</button>
+        <button class="method-pill" onclick="selectMethod('redeem',this)">🎟️ Redeem Code</button>
+      </div>
+
+      <!-- Dynamic input area -->
+      <div id="methodInput">
+        <!-- Paytm (default) -->
+        <div id="input-paytm" class="method-form">
+          <input type="tel" id="paytmNumber" placeholder="Paytm Mobile Number (10 digits)"/>
+        </div>
+        <!-- Google Pay -->
+        <div id="input-gpay" class="method-form" style="display:none;">
+          <input type="tel" id="gpayNumber" placeholder="Google Pay Mobile Number (10 digits)"/>
+        </div>
+        <!-- PayPal -->
+        <div id="input-paypal" class="method-form" style="display:none;">
+          <input type="email" id="paypalEmail" placeholder="PayPal Email Address"/>
+        </div>
+        <!-- UPI -->
+        <div id="input-upi" class="method-form" style="display:none;">
+          <input type="text" id="upiId" placeholder="UPI ID (e.g. name@upi)"/>
+        </div>
+        <!-- Redeem Code — no input needed, just shows result -->
+        <div id="input-redeem" class="method-form" style="display:none;">
+          <div style="background:var(--bg2);border:1px dashed #1e2535;border-radius:10px;
+            padding:14px;text-align:center;">
+            <div style="font-size:0.75rem;color:var(--muted);letter-spacing:0.15em;margin-bottom:8px;">
+              YOUR REDEEM CODE WILL APPEAR HERE
+            </div>
+            <div id="redeemCodeDisplay" style="font-family:'Orbitron',monospace;font-size:1.3rem;
+              font-weight:900;color:var(--gold);letter-spacing:0.25em;min-height:32px;
+              word-break:break-all;"></div>
+            <button id="copyBtn" onclick="copyCode()" style="display:none;margin-top:10px;
+              padding:6px 18px;border-radius:50px;border:1px solid var(--gold);
+              background:transparent;color:var(--gold);font-size:0.78rem;
+              cursor:pointer;letter-spacing:0.1em;">📋 Copy Code</button>
+          </div>
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:8px;text-align:center;">
+            Unique one-time code valid for 30 days
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:18px;">
         <button class="btn-secondary" onclick="closeModal('withdraw')">Cancel</button>
-        <button class="btn-primary" onclick="submitWithdraw()">Withdraw</button>
+        <button class="btn-primary" onclick="submitWithdraw()" id="withdrawBtn">Withdraw</button>
       </div>
     </div>
   </div>
@@ -516,18 +583,105 @@
       el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
     });
 
+    // ── Withdraw: active method tracking ──
+    let activeMethod = 'paytm';
+    const usedRedeemCodes = JSON.parse(localStorage.getItem('usedRedeemCodes') || '[]');
+
+    function selectMethod(method, el) {
+      activeMethod = method;
+      // Update pill styles
+      document.querySelectorAll('.method-pill').forEach(p => p.classList.remove('active'));
+      el.classList.add('active');
+      // Hide all forms
+      document.querySelectorAll('.method-form').forEach(f => f.style.display = 'none');
+      // Show selected form
+      document.getElementById('input-' + method).style.display = 'block';
+      // Update button text
+      const btn = document.getElementById('withdrawBtn');
+      if (method === 'redeem') {
+        btn.textContent = '🎟️ Generate Code';
+        btn.style.background = 'var(--purple)';
+        // Reset display
+        document.getElementById('redeemCodeDisplay').textContent = '';
+        document.getElementById('copyBtn').style.display = 'none';
+      } else {
+        btn.textContent = 'Withdraw';
+        btn.style.background = 'var(--gold)';
+      }
+    }
+
+    // ── Generate unique random redeem code (14–16 chars) ──
+    function generateRedeemCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O,0,I,1 to avoid confusion
+      let code, attempts = 0;
+      do {
+        const len = 14 + Math.floor(Math.random() * 3); // 14,15 or 16
+        code = '';
+        for (let i = 0; i < len; i++) {
+          if (i > 0 && i % 4 === 0) code += '-'; // format: XXXX-XXXX-XXXX-XX
+          code += chars[Math.floor(Math.random() * chars.length)];
+        }
+        attempts++;
+      } while (usedRedeemCodes.includes(code) && attempts < 100);
+      return code;
+    }
+
     // ── Submit Withdraw ──
     function submitWithdraw() {
       const amt = parseInt(document.getElementById('withdrawAmount').value) || 0;
-      const addr = document.getElementById('withdrawAddr').value.trim();
-      if (amt < 500) return showToast('⚠️ Minimum 500 coins required', 'var(--red)');
-      if (!addr) return showToast('⚠️ Please enter your payment address', 'var(--red)');
-      if (amt > balance) return showToast('⚠️ Insufficient coins', 'var(--red)');
+      if (amt < 500)      return showToast('⚠️ Minimum 500 coins required', 'var(--red)');
+      if (amt > balance)  return showToast('⚠️ Insufficient coins', 'var(--red)');
+
+      // ── Redeem Code path ──
+      if (activeMethod === 'redeem') {
+        const code = generateRedeemCode();
+        usedRedeemCodes.push(code);
+        localStorage.setItem('usedRedeemCodes', JSON.stringify(usedRedeemCodes));
+        // Show code in modal
+        document.getElementById('redeemCodeDisplay').textContent = code;
+        document.getElementById('copyBtn').style.display = 'inline-block';
+        // Deduct coins
+        balance -= amt;
+        localStorage.setItem('cvBalance', balance);
+        document.getElementById('balanceDisplay').textContent = balance.toLocaleString();
+        showToast('🎟️ Redeem code generated! Copy it now.', 'var(--purple)');
+        return; // keep modal open so user can copy
+      }
+
+      // ── Other payment methods ──
+      let addrVal = '';
+      let addrLabel = '';
+      if (activeMethod === 'paytm') {
+        addrVal = document.getElementById('paytmNumber').value.trim();
+        addrLabel = 'Paytm';
+        if (!/^\d{10}$/.test(addrVal)) return showToast('⚠️ Enter valid 10-digit Paytm number', 'var(--red)');
+      } else if (activeMethod === 'gpay') {
+        addrVal = document.getElementById('gpayNumber').value.trim();
+        addrLabel = 'Google Pay';
+        if (!/^\d{10}$/.test(addrVal)) return showToast('⚠️ Enter valid 10-digit Google Pay number', 'var(--red)');
+      } else if (activeMethod === 'paypal') {
+        addrVal = document.getElementById('paypalEmail').value.trim();
+        addrLabel = 'PayPal';
+        if (!addrVal.includes('@')) return showToast('⚠️ Enter valid PayPal email', 'var(--red)');
+      } else if (activeMethod === 'upi') {
+        addrVal = document.getElementById('upiId').value.trim();
+        addrLabel = 'UPI';
+        if (!addrVal.includes('@')) return showToast('⚠️ Enter valid UPI ID (e.g. name@upi)', 'var(--red)');
+      }
+
       balance -= amt;
       localStorage.setItem('cvBalance', balance);
       document.getElementById('balanceDisplay').textContent = balance.toLocaleString();
       closeModal('withdraw');
-      showToast(`✅ Withdrawal of ${amt} coins submitted!`, 'var(--green)');
+      showToast(`✅ ${amt} coins → ${addrLabel}: ${addrVal}`, 'var(--green)');
+    }
+
+    // ── Copy redeem code ──
+    function copyCode() {
+      const code = document.getElementById('redeemCodeDisplay').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        showToast('📋 Code copied to clipboard!', 'var(--purple)');
+      });
     }
 
     // ── Submit Promo ──
